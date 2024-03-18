@@ -3,10 +3,22 @@ import re
 import argparse
 import sys
 
-def getURL():
-    pass
+httpPort = 80
 
-def searchTerm():
+def getURL(sock, url):
+    sock.connect((url, httpPort))
+    sock.send(bytes("GET / HTTP/1.1\r\nHost:"+url+"\r\nConnection: close\r\n\r\n", 'UTF-8'))
+    response = b""
+    chunk = " "
+    while len(chunk):
+        chunk = sock.recv(256)
+        response += chunk
+    
+    sock.close()
+    print(response.decode('UTF-8'))
+
+def searchTerm(sock, term):
+    print(term)
     pass
 
 def argParseSetup():
@@ -21,14 +33,15 @@ def argParseSetup():
 
 def main():
     argList = argParseSetup()
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
     if(len(sys.argv) == 1):
         print("Pass some arguments first! -h or --help for possible ones")
 
     if argList.url:
-        getURL(argList.url)
+        getURL(sock, argList.url)
     if argList.search:
-        searchTerm(argList.search)
+        searchTerm(sock, argList.search)
 
 
 if __name__ == "__main__":
