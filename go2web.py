@@ -3,6 +3,7 @@ import re
 import argparse
 import sys
 import os
+import re
 from bs4 import BeautifulSoup
 from bs4.element import NavigableString
 
@@ -21,10 +22,7 @@ c = {
     "none": "\033[0m"
 }
 
-def parseHTML():
-    pass
-
-def getHTML(sock, url):
+def getHTML(sock, url, cache):
     host = ""
     path = ""
     if url[:4] == "http":
@@ -66,22 +64,41 @@ def getHTML(sock, url):
         return None
 
 
-def getURL(sock, url):
-    soup = getHTML(sock, url)
+def getURL(sock, url, cache):
+    soup = getHTML(sock, url, cache)
     if soup != None:
         for elem in soup.body.descendants:
-            if(elem.name != None and elem.string != None):
-                for e in elem.contents:
-                    if(type(e) == NavigableString):
-                        print(c['white'], elem.string.strip(), c['none'])
+            if(elem.name != None):
+                if(elem.string != None):
+                    for e in elem.contents:
+                        if(type(e) == NavigableString):
+                            print(c['white'], elem.string.strip(), c['none'])
                 if elem.has_attr('href'):
                     print(c['cyan'], elem['href'], c['none'])
                 if elem.has_attr('src'):
                     print(c['blue'], elem['src'], c['none'])
 
-def searchTerm(sock, term):
-    print(term)
-    pass
+def searchTerm(sock, term, cache):
+    query = ""
+    for word in term:
+        query += word + '+'
+    url = "https://www.google.com/search?q=" + query[:-1]
+    soup = getHTML(sock, url, cache)
+    googleClass = "DnJfK"
+
+    # Find the search result links and sanitize them
+    for item in soup.find_all("div", class_=googleClass):
+        print(c['green'], item.find('h3').getText(), c['none'])
+        addr = item.parent['href']
+        # Google's prefixes for links
+        addr_start = addr.find("?q=")
+        if(addr_start != -1):
+            addr = addr[addr_start + len("?q="):]
+        # Google's suffix always starts with &
+        addr_end = addr.find('&')
+        if(addr_end != -1):
+            addr = addr[:addr_end]
+        print(c['cyan'], addr, c['none'])
 
 def argParseSetup():
     argParser = argparse.ArgumentParser(
@@ -96,14 +113,15 @@ def argParseSetup():
 def main():
     argList = argParseSetup()
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    cache = {}
 
     if(len(sys.argv) == 1):
         print("Pass some arguments first! -h or --help for possible ones")
 
     if argList.url:
-        getURL(sock, argList.url)
+        getURL(sock, argList.url[0], cache)
     if argList.search:
-        searchTerm(sock, argList.search)
+        searchTerm(sock, argList.search, cache)
 
 
 if __name__ == "__main__":
