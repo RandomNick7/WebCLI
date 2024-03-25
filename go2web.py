@@ -3,10 +3,12 @@ import argparse
 import sys
 import os
 import json
+import ssl
 from bs4 import BeautifulSoup
 from bs4.element import NavigableString
 
 httpPort = 80
+httpsPort = 443
 os.system("")  # Enables ANSI escape characters in terminal
 
 c = {
@@ -32,7 +34,7 @@ def highlightJSON(soup):
         soup = soup.replace(s, (c['yellow']+ s +c['none']))
     return soup
 
-def getHTML(sock, url, cache):
+def getHTML(url, cache):
     host = ""
     path = ""
     if url[:4] == "http":
@@ -59,14 +61,21 @@ def getHTML(sock, url, cache):
         else:
             return soup
     else:
-        sock.connect((host, httpPort))
-        sock.send(bytes("GET /"+path+" HTTP/1.1\r\nHost:"+host+"\r\nConnection: close\r\n\r\n", 'UTF-8'))
+        if url[:5] == "https":
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.connect((host, httpsPort))
+            context = ssl.create_default_context()
+            sock = context.wrap_socket(sock, server_hostname=host)
+        else:
+            sock.connect((host, httpPort))
+
+        sock.sendall(bytes("GET /"+path+" HTTP/1.1\r\nHost:"+host+"\r\nConnection: close\r\n\r\n", 'UTF-8'))
         response = b""
         chunk = " "
         while len(chunk):
             chunk = sock.recv(256)
             response += chunk
-        
+
         sock.close()
         html = ""
         try:
@@ -88,13 +97,17 @@ def getHTML(sock, url, cache):
                 return soup
         else:
             if html.split(' ',2)[1][0] == "3":
-                print(html)
-            print("Error - Received status:", html.split('\n',1)[0].split(' ',1)[1])
-            return None
+                sock.close()
+                html = html[html.find("Location:") + len("Location:"):]
+                html = html[:html.find("\n")]
+                return getHTML(html[1:]+path, cache)
+            else:
+                print("Error - Received status:", html.split('\n',1)[0].split(' ',1)[1])
+                return None
 
 
-def getURL(sock, url, cache):
-    soup = getHTML(sock, url, cache)
+def getURL(url, cache):
+    soup = getHTML(url, cache)
     if soup != None:
         if soup.body != None:
             for elem in soup.body.descendants:
@@ -114,12 +127,12 @@ def getURL(sock, url, cache):
             soup = highlightJSON(soup)
             print(soup)
 
-def searchTerm(sock, term, cache):
+def searchTerm(term, cache):
     query = ""
     for word in term:
         query += word + '+'
     url = "https://www.google.com/search?q=" + query[:-1]
-    soup = getHTML(sock, url, cache)
+    soup = getHTML(url, cache)
     googleClass = "DnJfK"
 
     # Find the search result links and sanitize them
@@ -149,7 +162,6 @@ def argParseSetup():
 
 def main():
     argList = argParseSetup()
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     cache = {}
     path = os.path.dirname(os.path.realpath(sys.argv[0]))
 
@@ -165,9 +177,9 @@ def main():
         print("Pass some arguments first! -h or --help for possible ones")
 
     if argList.url:
-        getURL(sock, argList.url[0], cache)
+        getURL(argList.url[0], cache)
     if argList.search:
-        searchTerm(sock, argList.search, cache)
+        searchTerm(argList.search, cache)
     
     with open(path+"/cache.txt",'w+') as f:
         f.write(json.dumps(cache))
