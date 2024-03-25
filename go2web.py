@@ -1,9 +1,8 @@
 import socket
-import re
 import argparse
 import sys
 import os
-import re
+import json
 from bs4 import BeautifulSoup
 from bs4.element import NavigableString
 
@@ -38,30 +37,40 @@ def getHTML(sock, url, cache):
         except:
             pass
     
-    sock.connect((host, httpPort))
-    sock.send(bytes("GET /"+path+" HTTP/1.1\r\nHost:"+host+"\r\nConnection: close\r\n\r\n", 'UTF-8'))
-    response = b""
-    chunk = " "
-    while len(chunk):
-        chunk = sock.recv(256)
-        response += chunk
-    
-    sock.close()
-    html = ""
-    try:
-        html = response.decode('UTF-8')
-    except:
-        html = response.decode('latin-1')
-    
-    if html.split(' ',2)[1] == "200":
+    path = path.lstrip('/')
+
+    if host+'/'+path in cache:
+        html = cache[host+'/'+path]
         soup = BeautifulSoup(html, "html.parser")
-        # Remove invisible stuff from the soup, return just the body
-        for data in soup(['style','script','head']):
-            data.decompose()
-        return soup.html.extract()
+        s = soup.html.extract()
+        return s
     else:
-        print("Error - Received status:", html.split('\n',1)[0].split(' ',1)[1])
-        return None
+        sock.connect((host, httpPort))
+        sock.send(bytes("GET /"+path+" HTTP/1.1\r\nHost:"+host+"\r\nConnection: close\r\n\r\n", 'UTF-8'))
+        response = b""
+        chunk = " "
+        while len(chunk):
+            chunk = sock.recv(256)
+            response += chunk
+        
+        sock.close()
+        html = ""
+        try:
+            html = response.decode('UTF-8')
+        except:
+            html = response.decode('latin-1')
+    
+        if html.split(' ',2)[1] == "200":
+            soup = BeautifulSoup(html, "html.parser")
+            # Remove invisible stuff from the soup, return just the body
+            for data in soup(['style','script','head']):
+                data.decompose()
+            s = soup.html.extract()
+            cache[host+'/'+path] = str(s)
+            return s
+        else:
+            print("Error - Received status:", html.split('\n',1)[0].split(' ',1)[1])
+            return None
 
 
 def getURL(sock, url, cache):
@@ -87,18 +96,19 @@ def searchTerm(sock, term, cache):
     googleClass = "DnJfK"
 
     # Find the search result links and sanitize them
-    for item in soup.find_all("div", class_=googleClass):
-        print(c['green'], item.find('h3').getText(), c['none'])
-        addr = item.parent['href']
-        # Google's prefixes for links
-        addr_start = addr.find("?q=")
-        if(addr_start != -1):
-            addr = addr[addr_start + len("?q="):]
-        # Google's suffix always starts with &
-        addr_end = addr.find('&')
-        if(addr_end != -1):
-            addr = addr[:addr_end]
-        print(c['cyan'], addr, c['none'])
+    if soup != None:
+        for item in soup.find_all("div", class_=googleClass):
+            print(c['green'], item.find('h3').getText(), c['none'])
+            addr = item.parent['href']
+            # Google's prefixes for links
+            addr_start = addr.find("?q=")
+            if(addr_start != -1):
+                addr = addr[addr_start + len("?q="):]
+            # Google's suffix always starts with &
+            addr_end = addr.find('&')
+            if(addr_end != -1):
+                addr = addr[:addr_end]
+            print(c['cyan'], addr, c['none'])
 
 def argParseSetup():
     argParser = argparse.ArgumentParser(
@@ -114,6 +124,15 @@ def main():
     argList = argParseSetup()
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     cache = {}
+    path = os.path.dirname(os.path.realpath(sys.argv[0]))
+
+    with open(path+"/cache.txt",'a+') as f:
+        f.seek(0)
+        try:
+            cache = json.loads(f.read())
+        except:
+            pass
+        f.close()
 
     if(len(sys.argv) == 1):
         print("Pass some arguments first! -h or --help for possible ones")
@@ -122,6 +141,10 @@ def main():
         getURL(sock, argList.url[0], cache)
     if argList.search:
         searchTerm(sock, argList.search, cache)
+    
+    with open(path+"/cache.txt",'w+') as f:
+        f.write(json.dumps(cache))
+        f.close()
 
 
 if __name__ == "__main__":
