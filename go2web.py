@@ -21,6 +21,17 @@ c = {
     "none": "\033[0m"
 }
 
+def highlightJSON(soup):
+    for s in ["[","]"]:
+        soup = soup.replace(s, (c['yellow']+ s +c['none']))
+    for s in ["\"","'"]:
+        soup = soup.replace(s, (c['green']+ s +c['none']))
+    for s in ["{","}"]:
+        soup = soup.replace(s, (c['red']+ s +c['none']))
+    for s in [":"]:
+        soup = soup.replace(s, (c['yellow']+ s +c['none']))
+    return soup
+
 def getHTML(sock, url, cache):
     host = ""
     path = ""
@@ -42,8 +53,11 @@ def getHTML(sock, url, cache):
     if host+'/'+path in cache:
         html = cache[host+'/'+path]
         soup = BeautifulSoup(html, "html.parser")
-        s = soup.html.extract()
-        return s
+        if soup.html != None:
+            s = soup.html.extract()
+            return s
+        else:
+            return soup
     else:
         sock.connect((host, httpPort))
         sock.send(bytes("GET /"+path+" HTTP/1.1\r\nHost:"+host+"\r\nConnection: close\r\n\r\n", 'UTF-8'))
@@ -65,10 +79,16 @@ def getHTML(sock, url, cache):
             # Remove invisible stuff from the soup, return just the body
             for data in soup(['style','script','head']):
                 data.decompose()
-            s = soup.html.extract()
-            cache[host+'/'+path] = str(s)
-            return s
+            if soup.html != None:
+                s = soup.html.extract()
+                cache[host+'/'+path] = str(s)
+                return s
+            else:
+                cache[host+'/'+path] = str(soup)
+                return soup
         else:
+            if html.split(' ',2)[1][0] == "3":
+                print(html)
             print("Error - Received status:", html.split('\n',1)[0].split(' ',1)[1])
             return None
 
@@ -76,16 +96,23 @@ def getHTML(sock, url, cache):
 def getURL(sock, url, cache):
     soup = getHTML(sock, url, cache)
     if soup != None:
-        for elem in soup.body.descendants:
-            if(elem.name != None):
-                if(elem.string != None):
-                    for e in elem.contents:
-                        if(type(e) == NavigableString):
-                            print(c['white'], elem.string.strip(), c['none'])
-                if elem.has_attr('href'):
-                    print(c['cyan'], elem['href'], c['none'])
-                if elem.has_attr('src'):
-                    print(c['blue'], elem['src'], c['none'])
+        if soup.body != None:
+            for elem in soup.body.descendants:
+                if(elem.name != None):
+                    if(elem.string != None):
+                        for e in elem.contents:
+                            if(type(e) == NavigableString):
+                                print(c['white'], elem.string.strip(), c['none'])
+                    if elem.has_attr('href'):
+                        print(c['cyan'], elem['href'], c['none'])
+                    if elem.has_attr('src'):
+                        print(c['blue'], elem['src'], c['none'])
+        else:
+            soup = str(soup).strip()
+            if soup[-1] == '0':
+                soup = soup[:-1]
+            soup = highlightJSON(soup)
+            print(soup)
 
 def searchTerm(sock, term, cache):
     query = ""
