@@ -61,15 +61,15 @@ def getHTML(url, cache):
         else:
             return soup
     else:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         if url[:5] == "https":
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.connect((host, httpsPort))
             context = ssl.create_default_context()
             sock = context.wrap_socket(sock, server_hostname=host)
         else:
             sock.connect((host, httpPort))
 
-        sock.sendall(bytes("GET /"+path+" HTTP/1.1\r\nHost:"+host+"\r\nConnection: close\r\n\r\n", 'UTF-8'))
+        sock.send(bytes("GET /"+path+" HTTP/1.1\r\nHost:"+host+"\r\nConnection: close\r\n\r\n", 'UTF-8'))
         response = b""
         chunk = " "
         while len(chunk):
@@ -99,7 +99,8 @@ def getHTML(url, cache):
             if html.split(' ',2)[1][0] == "3":
                 sock.close()
                 html = html[html.find("Location:") + len("Location:"):]
-                html = html[:html.find("\n")]
+                html = html[:html.find("\n")-1]
+                # Use the given address for the redirect
                 return getHTML(html[1:]+path, cache)
             else:
                 print("Error - Received status:", html.split('\n',1)[0].split(' ',1)[1])
